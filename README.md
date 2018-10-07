@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="src/rocketchat.ico" width="100" height="100" />
+  <img src="https://github.com/RocketChat/Rocket.Chat.Artwork/raw/master/Logos/icon-1024.png" width="100" height="100" />
 </p>
 
 # Keypirinha Plugin: RocketChat
