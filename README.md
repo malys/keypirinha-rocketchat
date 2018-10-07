@@ -11,7 +11,7 @@ This is RocketChat, a plugin for the
 
 ## Download
 
-https://github.com/Fuhrmann/keypirinha-gitmoji/releases
+https://github.com/malys/keypirinha-rocketchat/releases
 
 
 ## Install
