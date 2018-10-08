@@ -15,8 +15,11 @@ class Rocketchat(kp.Plugin):
 
     def __init__(self):
         super().__init__()
-        if os.environ['DEBUG'] = 'rocketchat' 
-            self._debug = True # enables self.dbg() output
+        try:
+            if os.environ['DEBUG'] == 'rocketchat': 
+                self._debug = True # enables self.dbg() output
+        except Exception as exc:
+            self._debug = False    
         self.users = []
         self.channels = []
        
@@ -38,8 +41,7 @@ class Rocketchat(kp.Plugin):
                 short_desc="Search users",
                 target="rocketchat",
                 args_hint=kp.ItemArgsHint.REQUIRED,
-                hit_hint=kp.ItemHitHint.KEEPALL,
-                ico
+                hit_hint=kp.ItemHitHint.KEEPALL
             )
         ])
 
