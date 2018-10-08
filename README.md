@@ -38,8 +38,8 @@ Open Keypirinha and type 'rocketchat'. Once the suggestion appears press TAB or 
 
 ## Change Log
 
-### v1.0
-* Released
+### 0.0.1-beta-x
+* Released Beta version
 
 ## License
 
