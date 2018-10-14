@@ -10,7 +10,7 @@ import os
 
 class Rocketchat(kp.Plugin):
  
-    DAYS_KEEP_CACHE = 7
+    DAYS_KEEP_CACHE = 10
     ITEMCAT = kp.ItemCategory.USER_BASE + 1
 
     def __init__(self):
@@ -26,10 +26,10 @@ class Rocketchat(kp.Plugin):
 
     def on_start(self):
         self.dbg("On Start")
-        self.read_config()
-        self.generate_cache()
-        self.get_users()
-        self.get_channels()
+        if self.read_config():
+            if self.generate_cache():
+                self.get_users()
+                self.get_channels()
         pass
 
     def on_catalog(self):
@@ -74,11 +74,15 @@ class Rocketchat(kp.Plugin):
         kpu.web_browser_command(private_mode=None,url=url,execute=True)
 
     def generate_cache(self):
-        cache_path_u = self.get_cache_path("u")
         cache_path_c = self.get_cache_path("c")
         should_generate = False
+
+        for i in os.listdir():
+            if os.path.isfile(i) and self.get_cache_path("u") in i:
+                file = i
+        
         try:
-            last_modified = datetime.fromtimestamp(os.path.getmtime(cache_path)).date()
+            last_modified = datetime.fromtimestamp(os.path.getmtime(file)).date()
             if ((last_modified - datetime.today().date()).days > self.DAYS_KEEP_CACHE):
                 should_generate = True
         except Exception as exc:
@@ -86,19 +90,24 @@ class Rocketchat(kp.Plugin):
 
         if not should_generate:
             return False
-        self.dbg(self.AUTH,self.USER_ID,self.DOMAIN)
         opener = kpnet.build_urllib_opener()
         opener.addheaders = [("X-Auth-Token", str(self.AUTH)),("X-User-Id",str(self.USER_ID))]
-        urlUsers = urljoin(self.DOMAIN ,"/api/v1/users.list")
-        urlChannels = urljoin(self.DOMAIN ,"/api/v1/channels.list")
-        try:
-            with opener.open(urlUsers) as request:
-                response = request.read()
-                data = json.loads(response)
-                with open(cache_path_u, "w") as index_file:
-                    json.dump(data, index_file, indent=2)
-        except Exception as exc:
-            self.err("Could not reach the users to generate the cache: ", exc)   
+        urlUsers = urljoin(self.DOMAIN ,'/api/v1/users.list?fields={"name":1}&query={"active":true,"type":{"$in":["user"]}}&count=100')
+        urlChannels = urljoin(self.DOMAIN ,'/api/v1/channels.list?fields={"name":1}&count=0')
+        offset=0
+        total=2000
+        while offset < total:
+            try:
+                with opener.open(urlUsers + '&offset=' + str(offset)) as request:
+                    response = request.read()
+                    data = json.loads(response)
+                    total= int(data["total"])
+                    offset= offset + int(data["count"])   
+                    with open(self.get_cache_path("u"+ str(offset)), "w") as index_file:
+                        json.dump(data, index_file, indent=2)
+            except Exception as exc:
+                self.err("Could not reach the users to generate the cache: ", exc)  
+                return (offset>0) 
         try:          
             with opener.open(urlChannels) as request:
                 response = request.read()
@@ -106,24 +115,28 @@ class Rocketchat(kp.Plugin):
                 with open(cache_path_c, "w") as index_file:
                     json.dump(data, index_file, indent=2)   
         except Exception as exc:
-            self.err("Could not reach the channles to generate the cache: ", exc)     
+            self.err("Could not reach the channels to generate the cache: ", exc)  
+            return False 
+        return True      
 
     def get_users(self):
         if not self.users:
-            with open(self.get_cache_path("u"), "r") as users_file:
-                data = json.loads(users_file.read())
-            for item in data['users']:
-                self.dbg(item['name']) 
-                suggestion = self.create_item(
-                    category=self.ITEMCAT,
-                    label=item['name'],
-                    short_desc="direct",
-                    target=item['name'],
-                    args_hint=kp.ItemArgsHint.FORBIDDEN,
-                    hit_hint=kp.ItemHitHint.IGNORE
-                )
+            for i in os.listdir():
+                if os.path.isfile(i) and self.get_cache_path("u") in i:
+                    with open(i, "r") as users_file:
+                        data = json.loads(users_file.read())
+                    for item in data['users']:
+                        self.dbg(item['name']) 
+                        suggestion = self.create_item(
+                            category=self.ITEMCAT,
+                            label=item['name'],
+                            short_desc="direct",
+                            target=item['name'],
+                            args_hint=kp.ItemArgsHint.FORBIDDEN,
+                            hit_hint=kp.ItemHitHint.IGNORE
+                        )
 
-                self.users.append(suggestion)
+                    self.users.append(suggestion)
 
         return self.users
 
@@ -132,8 +145,8 @@ class Rocketchat(kp.Plugin):
             with open(self.get_cache_path("c"), "r") as users_file:
                 data = json.loads(users_file.read())
             for item in data['channels']:
-                self.dbg(item['name']) 
-                self.dbg("-------------------------") 
+                #self.dbg(item['name']) 
+                #self.dbg("-------------------------") 
                 suggestion = self.create_item(
                     category=self.ITEMCAT,
                     label=item['name'],
@@ -154,6 +167,11 @@ class Rocketchat(kp.Plugin):
     # read ini config
     def read_config(self):
         settings = self.load_settings()
-        self.AUTH = settings.get("AUTH", "main")
-        self.USER_ID = settings.get("USER_ID", "main")
-        self.DOMAIN = settings.get("DOMAIN", "main")
+        self.AUTH = str(settings.get("AUTH", "main"))
+        self.USER_ID = str(settings.get("USER_ID", "main"))
+        self.DOMAIN = str(settings.get("DOMAIN", "main"))
+
+        if not self.DOMAIN or not self.USER_ID or not self.AUTH:
+            self.dbg("Not configured",self.AUTH,self.USER_ID,self.DOMAIN)
+            return False
+        return True
