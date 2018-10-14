@@ -11,6 +11,7 @@ import os
 class Rocketchat(kp.Plugin):
  
     DAYS_KEEP_CACHE = 10
+    LIMIT = 2000
     ITEMCAT = kp.ItemCategory.USER_BASE + 1
 
     def __init__(self):
@@ -21,7 +22,14 @@ class Rocketchat(kp.Plugin):
         except Exception as exc:
             self._debug = False    
         self.users = []
-        self.channels = []
+
+    def on_events(self, flags):
+        """
+        Reloads the package config when its changed
+        """
+        if flags & kp.Events.PACKCONFIG:
+            self.read_config()
+    
        
 
     def on_start(self):
@@ -29,7 +37,7 @@ class Rocketchat(kp.Plugin):
         if self.read_config():
             if self.generate_cache():
                 self.get_users()
-                self.get_channels()
+
         pass
 
     def on_catalog(self):
@@ -37,8 +45,8 @@ class Rocketchat(kp.Plugin):
         self.set_catalog([
             self.create_item(
                 category=kp.ItemCategory.KEYWORD,
-                label="rocketchat",
-                short_desc="Search users",
+                label="Rocketchat",
+                short_desc="Search users/channels",
                 target="rocketchat",
                 args_hint=kp.ItemArgsHint.REQUIRED,
                 hit_hint=kp.ItemHitHint.KEEPALL
@@ -48,21 +56,16 @@ class Rocketchat(kp.Plugin):
     def on_suggest(self, user_input, items_chain):
         if not items_chain or items_chain[0].category() != kp.ItemCategory.KEYWORD:
             return
+ 
+        suggestions = self.filter(user_input)
+        self.set_suggestions(suggestions, kp.Match.ANY, kp.Sort.LABEL_ASC)
 
-        suggestionsU = self.filter_users(user_input)
-        suggestionsC = self.filter_channels(user_input)
-
-        self.set_suggestions(suggestionsU + suggestionsC, kp.Match.ANY, kp.Sort.LABEL_ASC)
-
-    def filter_users(self, user_input):
+    def filter(self, user_input):
         return list(filter(lambda item: self.has_name(item, user_input), self.users))
     
-    def filter_channels(self, user_input):
-        return list(filter(lambda item: self.has_name(item, user_input), self.channels))
-
     def has_name(self, item, user_input):
-        if user_input.lower() in item.label().lower():
-            self.dbg(user_input)
+        self.dbg(user_input.upper(),item.label().upper())
+        if user_input.upper() in item.label().upper():
             return item
         return False
 
@@ -74,12 +77,18 @@ class Rocketchat(kp.Plugin):
         kpu.web_browser_command(private_mode=None,url=url,execute=True)
 
     def generate_cache(self):
+        self.dbg("generate_cache user",self.AUTH,self.USER_ID,self.DOMAIN) 
         cache_path_c = self.get_cache_path("c")
         should_generate = False
+        cache_path = self.get_package_cache_path(True)
+        self.dbg(cache_path) 
 
-        for i in os.listdir():
-            if os.path.isfile(i) and self.get_cache_path("u") in i:
-                file = i
+        for i in os.listdir(cache_path):
+            self.dbg('Find',i) 
+            if os.path.isfile(os.path.join(cache_path,i)) and "urocket"  in i:
+                file = os.path.join(cache_path,i)
+                self.dbg('file',file)
+                break
         
         try:
             last_modified = datetime.fromtimestamp(os.path.getmtime(file)).date()
@@ -89,25 +98,31 @@ class Rocketchat(kp.Plugin):
             should_generate = True
 
         if not should_generate:
-            return False
+            return True
         opener = kpnet.build_urllib_opener()
         opener.addheaders = [("X-Auth-Token", str(self.AUTH)),("X-User-Id",str(self.USER_ID))]
-        urlUsers = urljoin(self.DOMAIN ,'/api/v1/users.list?fields={"name":1}&query={"active":true,"type":{"$in":["user"]}}&count=100')
+        urlUsers = urljoin(self.DOMAIN ,'/api/v1/users.list?fields={"name":1,"username":2}&query={"active":true,"type":{"$in":["user"]}}&count=' + str(self.LIMIT))
         urlChannels = urljoin(self.DOMAIN ,'/api/v1/channels.list?fields={"name":1}&count=0')
+
         offset=0
-        total=2000
+        total= self.LIMIT
         while offset < total:
             try:
                 with opener.open(urlUsers + '&offset=' + str(offset)) as request:
                     response = request.read()
                     data = json.loads(response)
-                    total= int(data["total"])
-                    offset= offset + int(data["count"])   
-                    with open(self.get_cache_path("u"+ str(offset)), "w") as index_file:
+                    self.dbg(offset,total)  
+                    if total > self.LIMIT:
+                        total=self.LIMIT
+                    with open(self.get_cache_path(str(offset) +"u"  ), "w") as index_file:
                         json.dump(data, index_file, indent=2)
+                        total= int(data["total"])
+                        offset= offset + int(data["count"]) 
             except Exception as exc:
                 self.err("Could not reach the users to generate the cache: ", exc)  
                 return (offset>0) 
+
+        self.dbg("generate_cache channel",self.AUTH,self.USER_ID,self.DOMAIN)         
         try:          
             with opener.open(urlChannels) as request:
                 response = request.read()
@@ -120,45 +135,44 @@ class Rocketchat(kp.Plugin):
         return True      
 
     def get_users(self):
+        self.dbg('Get users')
         if not self.users:
-            for i in os.listdir():
-                if os.path.isfile(i) and self.get_cache_path("u") in i:
-                    with open(i, "r") as users_file:
+            cache_path = self.get_package_cache_path(True)
+            for i in os.listdir(cache_path):
+                self.dbg(i)
+                if os.path.isfile(os.path.join(cache_path,i)) and "urocket" in i:
+                    with open(os.path.join(cache_path,i), "r") as users_file:
                         data = json.loads(users_file.read())
-                    for item in data['users']:
-                        self.dbg(item['name']) 
-                        suggestion = self.create_item(
-                            category=self.ITEMCAT,
-                            label=item['name'],
-                            short_desc="direct",
-                            target=item['name'],
-                            args_hint=kp.ItemArgsHint.FORBIDDEN,
-                            hit_hint=kp.ItemHitHint.IGNORE
-                        )
+                        for item in data['users']:
+                            self.dbg('cusers:' ,item['name']) 
+                            suggestion = self.create_item(
+                                category=self.ITEMCAT,
+                                label=item['name'],
+                                short_desc="direct",
+                                target=item['username'],
+                                args_hint=kp.ItemArgsHint.FORBIDDEN,
+                                hit_hint=kp.ItemHitHint.IGNORE
+                            )
 
-                    self.users.append(suggestion)
-
-        return self.users
-
-    def get_channels(self):
-        if not self.channels:
+                            self.users.append(suggestion)
             with open(self.get_cache_path("c"), "r") as users_file:
                 data = json.loads(users_file.read())
-            for item in data['channels']:
-                #self.dbg(item['name']) 
-                #self.dbg("-------------------------") 
-                suggestion = self.create_item(
-                    category=self.ITEMCAT,
-                    label=item['name'],
-                    short_desc="channel",
-                    target=item['name'],
-                    args_hint=kp.ItemArgsHint.FORBIDDEN,
-                    hit_hint=kp.ItemHitHint.IGNORE
-                )
 
-                self.channels.append(suggestion)
+                for item in data['channels']:
+                    self.dbg('cchannel:' ,item['name']) 
+                    #self.dbg("-------------------------") 
+                    suggestion = self.create_item(
+                        category=self.ITEMCAT,
+                        label=item['name'],
+                        short_desc="channel",
+                        target=item['name'],
+                        args_hint=kp.ItemArgsHint.FORBIDDEN,
+                        hit_hint=kp.ItemHitHint.IGNORE
+                    )
 
-        return self.channels
+                    self.users.append(suggestion)        
+        self.dbg('Length:' , len(self.users) )
+        return self.users
 
     def get_cache_path(self,prefix):
         cache_path = self.get_package_cache_path(True)
@@ -166,12 +180,14 @@ class Rocketchat(kp.Plugin):
 
     # read ini config
     def read_config(self):
+        self.dbg("Reading config")
         settings = self.load_settings()
+
         self.AUTH = str(settings.get("AUTH", "main"))
         self.USER_ID = str(settings.get("USER_ID", "main"))
         self.DOMAIN = str(settings.get("DOMAIN", "main"))
 
         if not self.DOMAIN or not self.USER_ID or not self.AUTH:
             self.dbg("Not configured",self.AUTH,self.USER_ID,self.DOMAIN)
-            return False
+            return False   
         return True
