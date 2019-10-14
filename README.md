@@ -41,6 +41,13 @@ Open Keypirinha and type 'rocketchat'. Once the suggestion appears press TAB or 
 ### 0.0.1-beta-x
 * Released Beta version
 
+## TODO
+
+* User refresh improvements
+* Send message from keypirinha
+* Create generic extension to consume easily API rest
+
+
 ## License
 
 This package is distributed under the terms of the MIT license.
