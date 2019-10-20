@@ -31,6 +31,12 @@ move it to the `InstalledPackage` folder located at:
   final path would look like
   `C:\Users\%USERNAME%\AppData\Roaming\Keypirinha\InstalledPackages`)
 
+#### Configuration
+
+[main]
+AUTH = "auth"       <- In your personal profile (My Account), Generate a Personal Access Tokens for this use and add it "AUTH" field.
+USER_ID = "id"      <- RC UserId
+DOMAIN = "https://open.rocket.chat" <- domain of RC host
 
 ## Usage
 
