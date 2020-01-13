@@ -42,7 +42,7 @@ class Rocketchat(kp.Plugin):
 
     def on_start(self):
         self.dbg("On Start")
-        #self.set_actions(self.ITEMCAT, [self.forge_action('open', 'Open', 'Open rocket chat')]) 
+        self.set_actions(self.ITEMCAT, [self.forge_action('open', 'Open', 'Open rocket chat')]) 
         #self.set_actions(self.ITEMMESSAGE, [self.forge_action('send', 'Send', 'Send to rocket chat')]) 
         if self.read_config():
             if self.generate_cache():
@@ -62,30 +62,30 @@ class Rocketchat(kp.Plugin):
             )
         ])
 
-    def forge_suggest(self,channel, message):
+    def forge_suggest(self,short_desc,channel, message):
         return self.create_item(
             category = self.ITEMMESSAGE,
             label = message,
-            short_desc = 'Send \'' + message + '\'',
+            short_desc = short_desc,
             target = channel,
             args_hint = kp.ItemArgsHint.FORBIDDEN,
             hit_hint = kp.ItemHitHint.IGNORE)
 
     def on_suggest(self, user_input, items_chain):
-        #if not items_chain or items_chain[0].category() != kp.ItemCategory.KEYWORD:
-        #    return 
+        if not items_chain or items_chain[0].category() != kp.ItemCategory.KEYWORD:
+            return 
         if len(items_chain) == 1:
             self.set_suggestions(self.filter(user_input), kp.Match.FUZZY, kp.Sort.LABEL_ASC) 
         elif len(items_chain) > 1 and len(user_input)>2:
             self.dbg("--->",user_input) 
-            suggestions=[self.forge_suggest(items_chain[1].target(),user_input)] 
+            suggestions=[self.forge_suggest(items_chain[1].short_desc(), items_chain[1].target(),user_input)] 
             self.set_suggestions(suggestions)
 
     def filter(self, user_input):
         return list(filter(lambda item: self.has_name(item, user_input), self.users))
     
     def has_name(self, item, user_input):
-        self.dbg(user_input.upper(),item.label().upper())
+        #self.dbg(user_input.upper(),item.label().upper())
         if user_input.upper() in item.label().upper():
             return item
         return False
@@ -102,17 +102,21 @@ class Rocketchat(kp.Plugin):
 
     def openBrowser(self, item):
         url=urljoin(self.DOMAIN, item.short_desc()+ "/" + item.target())
-        self.dbg(url)
+        self.dbg("open",url)
         kpu.web_browser_command(private_mode=None,url=url,execute=True)       
 
     def on_execute(self, item, action):
-        if item.category() == self.ITEMCAT:
+        if item.category() == self.ITEMCAT or action == "open":
             self.openBrowser(item)
         else:
             url=urljoin(self.DOMAIN, "/api/v1/chat.postMessage")
-            self.dbg("url",url)
-            with self.forgeRequest(url,"POST",{ "channel": item.target(), "text": item.label() }) as request:
+            self.dbg("Send", item.short_desc(), item.target())
+            prefix = ""
+            if item.short_desc() == "direct":
+                prefix="@"
+            with self.forgeRequest(url,"POST",{ "channel": prefix + item.target(), "text": item.label() }) as request:
                 response = request.read()
+                self.openBrowser(item)
 
 
 
