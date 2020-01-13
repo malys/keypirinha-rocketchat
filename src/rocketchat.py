@@ -7,12 +7,14 @@ import json
 from datetime import datetime
 from urllib.parse import urljoin 
 import os
+import urllib
 
 class Rocketchat(kp.Plugin):
  
     DAYS_KEEP_CACHE = 10
     LIMIT = 2000
     ITEMCAT = kp.ItemCategory.USER_BASE + 1
+    ITEMMESSAGE = kp.ItemCategory.USER_BASE + 2
 
     def __init__(self):
         super().__init__()
@@ -27,17 +29,24 @@ class Rocketchat(kp.Plugin):
         """
         Reloads the package config when its changed
         """
+        self.dbg(flags)
         if flags & kp.Events.PACKCONFIG:
             self.read_config()
     
-       
+    def forge_action(self, name, label, desc):
+        return self.create_action(
+            name = name,
+            label = label,
+            short_desc = desc
+        )
 
     def on_start(self):
         self.dbg("On Start")
+        #self.set_actions(self.ITEMCAT, [self.forge_action('open', 'Open', 'Open rocket chat')]) 
+        #self.set_actions(self.ITEMMESSAGE, [self.forge_action('send', 'Send', 'Send to rocket chat')]) 
         if self.read_config():
             if self.generate_cache():
                 self.get_users()
-
         pass
 
     def on_catalog(self):
@@ -53,12 +62,24 @@ class Rocketchat(kp.Plugin):
             )
         ])
 
+    def forge_suggest(self,channel, message):
+        return self.create_item(
+            category = self.ITEMMESSAGE,
+            label = message,
+            short_desc = 'Send \'' + message + '\'',
+            target = channel,
+            args_hint = kp.ItemArgsHint.FORBIDDEN,
+            hit_hint = kp.ItemHitHint.IGNORE)
+
     def on_suggest(self, user_input, items_chain):
-        if not items_chain or items_chain[0].category() != kp.ItemCategory.KEYWORD:
-            return
- 
-        suggestions = self.filter(user_input)
-        self.set_suggestions(suggestions, kp.Match.ANY, kp.Sort.LABEL_ASC)
+        #if not items_chain or items_chain[0].category() != kp.ItemCategory.KEYWORD:
+        #    return 
+        if len(items_chain) == 1:
+            self.set_suggestions(self.filter(user_input), kp.Match.FUZZY, kp.Sort.LABEL_ASC) 
+        elif len(items_chain) > 1 and len(user_input)>2:
+            self.dbg("--->",user_input) 
+            suggestions=[self.forge_suggest(items_chain[1].target(),user_input)] 
+            self.set_suggestions(suggestions)
 
     def filter(self, user_input):
         return list(filter(lambda item: self.has_name(item, user_input), self.users))
@@ -69,12 +90,32 @@ class Rocketchat(kp.Plugin):
             return item
         return False
 
-    def on_execute(self, item, action):
-        if item.category() != self.ITEMCAT:
-            return
+    def forgeRequest(self, url,typ,dataRaw):
+        opener = kpnet.build_urllib_opener()
+        opener.addheaders = [("X-Auth-Token", str(self.AUTH)),("X-User-Id",str(self.USER_ID))]
+        if typ == 'POST':
+            data = urllib.parse.urlencode(dataRaw).encode()
+            req = urllib.request.Request(url, data=data)
+            return opener.open(req)
+        else:
+            return opener.open(url) 
+
+    def openBrowser(self, item):
         url=urljoin(self.DOMAIN, item.short_desc()+ "/" + item.target())
         self.dbg(url)
-        kpu.web_browser_command(private_mode=None,url=url,execute=True)
+        kpu.web_browser_command(private_mode=None,url=url,execute=True)       
+
+    def on_execute(self, item, action):
+        if item.category() == self.ITEMCAT:
+            self.openBrowser(item)
+        else:
+            url=urljoin(self.DOMAIN, "/api/v1/chat.postMessage")
+            self.dbg("url",url)
+            with self.forgeRequest(url,"POST",{ "channel": item.target(), "text": item.label() }) as request:
+                response = request.read()
+
+
+
 
     def generate_cache(self):
         self.dbg("generate_cache user",self.AUTH,self.USER_ID,self.DOMAIN) 
@@ -99,16 +140,13 @@ class Rocketchat(kp.Plugin):
 
         if not should_generate:
             return True
-        opener = kpnet.build_urllib_opener()
-        opener.addheaders = [("X-Auth-Token", str(self.AUTH)),("X-User-Id",str(self.USER_ID))]
         urlUsers = urljoin(self.DOMAIN ,'/api/v1/users.list?fields={"name":1,"username":2}&query={"active":true,"type":{"$in":["user"]}}&count=' + str(self.LIMIT))
         urlChannels = urljoin(self.DOMAIN ,'/api/v1/channels.list?fields={"name":1}&count=0')
-
         offset=0
         total= self.LIMIT
         while offset < total:
             try:
-                with opener.open(urlUsers + '&offset=' + str(offset)) as request:
+                with self.forgeRequest(urlUsers + '&offset=' + str(offset),"GET") as request:
                     response = request.read()
                     data = json.loads(response)
                     self.dbg(offset,total)  
@@ -121,10 +159,9 @@ class Rocketchat(kp.Plugin):
             except Exception as exc:
                 self.err("Could not reach the users to generate the cache: ", exc)  
                 return (offset>0) 
-
         self.dbg("generate_cache channel",self.AUTH,self.USER_ID,self.DOMAIN)         
         try:          
-            with opener.open(urlChannels) as request:
+            with self.forgeRequest(urlChannels,"GET") as request:
                 response = request.read()
                 data = json.loads(response)
                 with open(cache_path_c, "w") as index_file:
@@ -150,8 +187,8 @@ class Rocketchat(kp.Plugin):
                                 label=item['name'],
                                 short_desc="direct",
                                 target=item['username'],
-                                args_hint=kp.ItemArgsHint.FORBIDDEN,
-                                hit_hint=kp.ItemHitHint.IGNORE
+                                args_hint=kp.ItemArgsHint.REQUIRED,
+                                hit_hint=kp.ItemHitHint.KEEPALL
                             )
 
                             self.users.append(suggestion)
@@ -166,8 +203,8 @@ class Rocketchat(kp.Plugin):
                         label=item['name'],
                         short_desc="channel",
                         target=item['name'],
-                        args_hint=kp.ItemArgsHint.FORBIDDEN,
-                        hit_hint=kp.ItemHitHint.IGNORE
+                        args_hint=kp.ItemArgsHint.REQUIRED,
+                        hit_hint=kp.ItemHitHint.KEEPALL
                     )
 
                     self.users.append(suggestion)        
