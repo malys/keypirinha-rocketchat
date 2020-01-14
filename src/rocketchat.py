@@ -42,7 +42,7 @@ class Rocketchat(kp.Plugin):
 
     def on_start(self):
         self.dbg("On Start")
-        #self.set_actions(self.ITEMCAT, [self.forge_action('open', 'Open', 'Open rocket chat')]) 
+        self.set_actions(self.ITEMMESSAGE, [self.forge_action('open', 'Open', 'Open rocket chat')]) 
         #self.set_actions(self.ITEMMESSAGE, [self.forge_action('send', 'Send', 'Send to rocket chat')]) 
         if self.read_config():
             if self.generate_cache():
@@ -68,7 +68,7 @@ class Rocketchat(kp.Plugin):
             label = message,
             short_desc = short_desc,
             target = channel,
-            args_hint = kp.ItemArgsHint.FORBIDDEN,
+            args_hint = kp.ItemArgsHint.ACCEPTED,
             hit_hint = kp.ItemHitHint.IGNORE)
 
     def on_suggest(self, user_input, items_chain):
@@ -76,7 +76,7 @@ class Rocketchat(kp.Plugin):
             return 
         if len(items_chain) == 1:
             self.set_suggestions(self.filter(user_input), kp.Match.FUZZY, kp.Sort.LABEL_ASC) 
-        elif len(items_chain) > 1 and len(user_input)>2:
+        elif len(items_chain) > 1 and len(user_input)>0:
             self.dbg("--->",user_input) 
             suggestions=[self.forge_suggest(items_chain[1].short_desc(), items_chain[1].target(),user_input)] 
             self.set_suggestions(suggestions)
@@ -106,9 +106,11 @@ class Rocketchat(kp.Plugin):
         kpu.web_browser_command(private_mode=None,url=url,execute=True)       
 
     def on_execute(self, item, action):
-        if item.category() == self.ITEMCAT:
-            self.openBrowser(item)
-        else:
+        self.dbg("Execute",item, action)
+        if action:
+            if action.name() == "open":
+                self.openBrowser(item)
+        elif item.category() == self.ITEMMESSAGE:
             url=urljoin(self.DOMAIN, "/api/v1/chat.postMessage")
             self.dbg("Send", item.short_desc(), item.target())
             prefix = ""
