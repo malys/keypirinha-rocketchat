@@ -46,6 +46,10 @@ Open Keypirinha and type 'rocketchat'. Once the suggestion appears press TAB or 
 
 ## Change Log
 
+### 0.1.0
+* Send message from keypirinha
+* Open browser only mode
+
 ### 0.0.1-beta-x
 * Released Beta version
 
