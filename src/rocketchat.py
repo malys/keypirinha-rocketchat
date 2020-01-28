@@ -152,7 +152,7 @@ class Rocketchat(kp.Plugin):
         total= self.LIMIT
         while offset < total:
             try:
-                with self.forgeRequest(urlUsers + '&offset=' + str(offset),"GET") as request:
+                with self.forgeRequest(urlUsers + '&offset=' + str(offset),"GET","") as request:
                     response = request.read()
                     data = json.loads(response)
                     self.dbg(offset,total)  
@@ -167,7 +167,7 @@ class Rocketchat(kp.Plugin):
                 return (offset>0) 
         self.dbg("generate_cache channel",self.AUTH,self.USER_ID,self.DOMAIN)         
         try:          
-            with self.forgeRequest(urlChannels,"GET") as request:
+            with self.forgeRequest(urlChannels,"GET","") as request:
                 response = request.read()
                 data = json.loads(response)
                 with open(cache_path_c, "w") as index_file:
