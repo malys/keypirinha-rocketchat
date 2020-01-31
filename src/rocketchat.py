@@ -192,7 +192,7 @@ class Rocketchat(kp.Plugin):
                                 category=self.ITEMCAT,
                                 label=self.get_unique_name(item),
                                 short_desc="direct",
-                                target=item['username'],
+                                target=self.get_unique_name(item),
                                 args_hint=kp.ItemArgsHint.REQUIRED,
                                 hit_hint=kp.ItemHitHint.KEEPALL
                             )
@@ -235,10 +235,10 @@ class Rocketchat(kp.Plugin):
             return False   
         return True
 
-    def get_unique_name(item):
+    def get_unique_name(self,item):
         name = item.get('name')
         username = item.get('username')
-        label = username  # username is always set, for name that is not the case
-        if name:
-            label = name + " (" + username + ")"  # the name itself is not unique
-        return label        
+        label = name  # username is always set, for name that is not the case
+        if name is not None :
+            label = name + " (" + username + ")"  # the name itself is not unique        
+        return label          
