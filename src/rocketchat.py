@@ -190,7 +190,7 @@ class Rocketchat(kp.Plugin):
                             self.dbg('cusers:' ,item['name']) 
                             suggestion = self.create_item(
                                 category=self.ITEMCAT,
-                                label=item['name'],
+                                label=self.get_unique_name(item),
                                 short_desc="direct",
                                 target=item['username'],
                                 args_hint=kp.ItemArgsHint.REQUIRED,
@@ -234,3 +234,11 @@ class Rocketchat(kp.Plugin):
             self.dbg("Not configured",self.AUTH,self.USER_ID,self.DOMAIN)
             return False   
         return True
+
+    def get_unique_name(item):
+        name = item.get('name')
+        username = item.get('username')
+        label = username  # username is always set, for name that is not the case
+        if name:
+            label = name + " (" + username + ")"  # the name itself is not unique
+        return label        
